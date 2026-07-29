@@ -49,12 +49,26 @@ def _rules(d):
       "Natural Selections.\n"
       "- If a recipe uses a dressing the client selected, suggest a lower-calorie version (e.g., light Caesar, "
       "balsamic vinaigrette).\n"
-      "- Keep directions COMPREHENSIVE: clear numbered steps a beginner could follow (temperatures, times, cues).\n"
+      "- Keep directions COMPREHENSIVE: at least 3 to 5 clear numbered steps a beginner could follow "
+      "(temperatures, times, cues).\n"
+      "- Do NOT use em dashes or en dashes anywhere; use commas, or the word 'to' for ranges (e.g., 8 to 10 minutes).\n"
+      "- Give each recipe a distinct name and dish; do not repeat the same bowl or meal.\n"
       "- High protein AND high fibre. Do NOT mention calories anywhere.\n")
 
-def _section_prompt(d, section_word):
+SECTION_GUIDE = {
+    "breakfast": "These must be BREAKFAST dishes (e.g., eggs, scrambles, overnight oats, protein pancakes, "
+                 "smoothies, yogurt bowls).",
+    "lunch": "These must be portable, meal-prep LUNCHES (e.g., grain/protein bowls, wraps, salads, sandwiches).",
+    "dinner": "These must be DINNER mains (e.g., sheet-pan meals, stir-fries, grilled/BBQ, pastas, hearty bowls).",
+    "snacks": "These must be QUICK SNACKS, NOT full meals: small, portable, 15g+ protein, with little or no cooking "
+              "(e.g., Greek yogurt with berries, a protein shake, hard-boiled eggs, edamame, cottage cheese, turkey "
+              "roll-ups, hummus with veg, a cheese portion, a protein bar). Do NOT create rice bowls or full dinners.",
+}
+
+def _section_prompt(d, section_word, guidance):
     return (
       "You are a nutrition coach for The Fit Physician. Create EXACTLY 5 " + section_word + " for a personalized guide.\n"
+      + guidance + "\n"
       "RULES:\n" + _rules(d) +
       'Return ONLY a valid JSON array of exactly 5 recipe objects (no prose, no markdown), each:\n'
       '{"name":"","makes":"Serves 1","time":"12 minutes","utensils":"Non-stick skillet, spatula, bowl",'
@@ -76,10 +90,14 @@ def _claude_array(prompt):
 def generate_recipes(d):
     out = {}
     with ThreadPoolExecutor(max_workers=4) as ex:
-        futs = {ex.submit(_claude_array, _section_prompt(d, cfg[1])): cfg[0] for cfg in SECTION_CFG}
+        futs = {ex.submit(_claude_array, _section_prompt(d, cfg[1], SECTION_GUIDE[cfg[0]])): cfg[0] for cfg in SECTION_CFG}
         for fut in as_completed(futs):
             out[futs[fut]] = fut.result()
     return out
+
+def _clean(s):
+    if not isinstance(s, str): return s
+    return s.replace(" — ", ", ").replace("—", ", ").replace(" – ", ", ").replace("–", "-")
 
 _usda_cache = {}
 def usda_lookup(q):
@@ -135,11 +153,11 @@ def pexels_photo(queries):
 def _finish_recipe(rec):
     p, f = compute_macros(rec.get("ingredients", []), int(rec.get("protein") or 0), int(rec.get("fibre") or 0))
     return {
-        "name": rec.get("name", ""), "makes": rec.get("makes", ""),
-        "time": rec.get("time", ""), "utensils": rec.get("utensils", ""),
+        "name": _clean(rec.get("name", "")), "makes": _clean(rec.get("makes", "")),
+        "time": _clean(rec.get("time", "")), "utensils": _clean(rec.get("utensils", "")),
         "protein": p, "fibre": f,
-        "ingredients": [(i.get("display") if isinstance(i, dict) else str(i)) for i in rec.get("ingredients", [])],
-        "steps": rec.get("steps", []),
+        "ingredients": [_clean(i.get("display") if isinstance(i, dict) else str(i)) for i in rec.get("ingredients", [])],
+        "steps": [_clean(s) for s in rec.get("steps", [])],
         "photo": pexels_photo(rec.get("photoQueries")),
     }
 
