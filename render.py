@@ -11,7 +11,7 @@ from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import Paragraph, Frame, Spacer
+from reportlab.platypus import Paragraph, Frame, Spacer, KeepInFrame
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
@@ -103,8 +103,10 @@ def render_guide(client_name, sections):
                   "flexible diet that fits your life. This guide supports your coaching, it does not replace it.", st_body),
         Paragraph("<font name='Lato-BoldItalic' size=15>Enjoy! Suzanne &amp; Jake</font>", st_body),
     ], c)
+    c.setFillColor(PURPLE); c.setFont('Lato-Bold', 10.5)
+    c.drawCentredString(W/2, 416, "Each recipe makes 1 serving. For more servings, simply multiply all ingredient amounts.")
     c.setFillColor(MIDGRAY); c.setFont('Lato-Italic', 9.5)
-    c.drawCentredString(W/2, 400, "Please note: all protein and fibre values in this guide are estimates.")
+    c.drawCentredString(W/2, 398, "Please note: all protein and fibre values in this guide are estimates.")
     c.setFillColor(BLACK); c.setFont('Headline', 28); c.drawCentredString(W/2, 360, "TABLE OF CONTENTS")
     y = 320; pg = 3
     for s in sections:
@@ -164,12 +166,14 @@ def render_guide(client_name, sections):
         mf = Frame(72, ph_top-ph_h-52, W-144, 46, showBoundary=0, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
         mf.addFromList([Paragraph("<b>Time to complete:</b> %s" % r.get('time',''), st_meta),
                         Paragraph("<b>Utensils:</b> %s" % r.get('utensils',''), st_meta)], c)
-        fr2 = Frame(72, 120, W-144, (ph_top-ph_h-58)-120, showBoundary=0, leftPadding=0, rightPadding=0)
+        fr2_h = (ph_top-ph_h-58)-120
+        fr2 = Frame(72, 120, W-144, fr2_h, showBoundary=0, leftPadding=0, rightPadding=0)
         flow = [Paragraph("INGREDIENTS", st_h), Spacer(1, 2), Paragraph("<br/>".join(r['ingredients']), st_ing),
                 Spacer(1, 12), Paragraph("DIRECTIONS", st_h), Spacer(1, 2)]
         for i, s2 in enumerate(r['steps']):
             flow.append(Paragraph("%d.&nbsp;&nbsp;&nbsp;%s" % (i+1, s2), st_step))
-        fr2.addFromList(flow, c)
+        # shrink to fit so long ingredient lists + directions never run off the page
+        fr2.addFromList([KeepInFrame(W-144, fr2_h, flow, mode='shrink')], c)
         pw, ph2, yy = 280, 30, 74
         c.setFillColor(CHAR); c.roundRect(W/2-pw/2, yy, pw, ph2, 5, fill=1, stroke=0)
         c.setFillColor(WHITE); c.setFont('Lato-Bold', 12)
