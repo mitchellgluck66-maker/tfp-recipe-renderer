@@ -62,7 +62,7 @@ def _crop_cover(img_bytes, target_w, target_h):
     except Exception:
         return None
 
-def render_guide(client_name, sections):
+def render_guide(client_name, sections, combos=None):
     _fonts()
     st_makes = _PS('m', fontName='Lato-Italic', fontSize=11, textColor=MIDGRAY, alignment=TA_CENTER, leading=14)
     st_meta = _PS('mt', fontSize=10.5, textColor=BLACK, alignment=TA_LEFT, leading=15)
@@ -174,10 +174,14 @@ def render_guide(client_name, sections):
             flow.append(Paragraph("%d.&nbsp;&nbsp;&nbsp;%s" % (i+1, s2), st_step))
         # shrink to fit so long ingredient lists + directions never run off the page
         fr2.addFromList([KeepInFrame(W-144, fr2_h, flow, mode='shrink')], c)
-        pw, ph2, yy = 280, 30, 74
+        if r.get('cal'):
+            pw = 360; pill_text = "P: %sg   |   Fibre: %sg   |   %s cal" % (r['protein'], r['fibre'], r['cal'])
+        else:
+            pw = 280; pill_text = "P: %sg  |  Fibre: %sg" % (r['protein'], r['fibre'])
+        ph2, yy = 30, 74
         c.setFillColor(CHAR); c.roundRect(W/2-pw/2, yy, pw, ph2, 5, fill=1, stroke=0)
         c.setFillColor(WHITE); c.setFont('Lato-Bold', 12)
-        c.drawCentredString(W/2, yy+ph2/2-5, "P: %sg  |  Fibre: %sg" % (r['protein'], r['fibre']))
+        c.drawCentredString(W/2, yy+ph2/2-5, pill_text)
         c.setFillColor(MIDGRAY); c.setFont('Lato-Italic', 8.5); c.drawCentredString(W/2, yy-13, "(PER SERVING)")
         c.setFillColor(PURPLE); c.rect(0, 0, W, 16, fill=1, stroke=0); page_number(); c.showPage()
 
@@ -185,6 +189,28 @@ def render_guide(client_name, sections):
         divider(s)
         for r in s['recipes']:
             recipe_page(s['label'], r)
+
+    # bonus page: sample daily meal combinations (breakfast + lunch + dinner)
+    if combos:
+        page_bars()
+        c.setFillColor(BLACK); c.setFont('Headline', 30); c.drawCentredString(W/2, H-96, "MEAL COMBINATIONS")
+        c.setFillColor(PURPLE); c.rect(W/2-45, H-110, 90, 4, fill=1, stroke=0)
+        c.setFillColor(MIDGRAY); c.setFont('Lato-Italic', 10.5)
+        c.drawCentredString(W/2, H-130, "Sample days aiming for about 1600 calories and 130 to 150 g protein. Mix and match to fit you.")
+        st_ch = _PS('ch', fontName='Lato-Bold', fontSize=12.5, textColor=PURPLE, leading=15, spaceBefore=9)
+        st_cc = _PS('cc', fontSize=11, textColor=BLACK, leading=15, leftIndent=10)
+        flow = []
+        for idx, cb in enumerate(combos, 1):
+            flow.append(Paragraph("Day %d &nbsp;&bull;&nbsp; about %s cal, %s g protein" % (idx, cb['cal'], cb['protein']), st_ch))
+            for label, nm, cal, pro in cb['items']:
+                flow.append(Paragraph("<b>%s:</b> %s <font color='#595959'>(%s cal, %s g protein)</font>" % (label, nm, cal, pro), st_cc))
+        flow.append(Spacer(1, 10))
+        flow.append(Paragraph("<i>All values are estimates. Add any snack from Section 4 to add roughly 200 to 300 calories and "
+                              "20 to 28 g protein, or scale portions up or down to hit your own targets.</i>",
+                              _PS('note', fontSize=10, textColor=MIDGRAY, leading=14)))
+        bf = Frame(60, 90, W-120, H-150-90, showBoundary=0, leftPadding=0, rightPadding=0)
+        bf.addFromList([KeepInFrame(W-120, H-150-90, flow, mode='shrink')], c)
+        page_number(); c.showPage()
 
     c.drawImage(CLOSE1, 0, 0, W, H)
     f3 = Frame(W*0.205, H*0.44, W*0.62, H*0.30, showBoundary=0)
