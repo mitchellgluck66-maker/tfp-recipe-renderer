@@ -1,6 +1,7 @@
 """Orchestration: client selections -> Claude recipes -> USDA macros -> Pexels photos -> branded PDF.
 The four meal sections are generated in parallel (smaller, faster calls) for speed and reliability."""
 import os, json, requests
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from render import render_guide
 
@@ -93,8 +94,10 @@ def _rules(d):
       "- VARIETY: across the 5 recipes, maximize variety, rotate the starches, sides, and vegetables so no single base "
       "(especially rice) repeats across most recipes.\n"
       "- Do NOT use em dashes or en dashes anywhere; use commas, or the word 'to' for ranges (e.g., 8 to 10 minutes).\n"
-      "- Give each recipe a distinct name and dish; do not repeat the same bowl or meal.\n"
-      "- High protein AND high fibre. Do NOT mention calories anywhere.\n")
+      "- Give each recipe a distinct name and dish; do not repeat the same bowl or meal.\n" +
+      ("- High protein AND high fibre. Also give an integer 'calories' estimate per serving.\n"
+       if d.get("with_calories") else
+       "- High protein AND high fibre. Do NOT mention calories anywhere.\n"))
 
 SECTION_GUIDE = {
     "breakfast": "These must be BREAKFAST dishes (e.g., eggs, scrambles, overnight oats, protein pancakes, "
@@ -107,18 +110,21 @@ SECTION_GUIDE = {
 }
 
 def _section_prompt(d, section_word, guidance):
+    wc = bool(d.get("with_calories"))
+    cal_field = '"calories":0,' if wc else ''
+    cal_note = " calories = integer kcal per serving;" if wc else ""
     return (
       "You are a nutrition coach for The Fit Physician. Create EXACTLY 5 " + section_word + " for a personalized guide.\n"
       + guidance + "\n"
       "RULES:\n" + _rules(d) +
       'Return ONLY a valid JSON array of exactly 5 recipe objects (no prose, no markdown), each:\n'
       '{"name":"","makes":"Serves 1","time":"10 to 12 minutes","utensils":"Non-stick skillet, spatula, bowl",'
-      '"protein":0,"fibre":0,"photoQueries":["specific dish","simpler","generic real dish"],'
+      '"protein":0,"fibre":0,' + cal_field + '"photoQueries":["specific dish","simpler","generic real dish"],'
       '"ingredients":[{"display":"6 oz chicken breast","grams":170,"fdcQuery":"chicken breast, cooked"}],'
       '"steps":["..."]}\n'
       "display = practical household unit (oz/cups/tbsp/tsp/count), NOT grams; grams = accurate weight per one serving "
       "for macro math; fdcQuery = plain USDA food name; utensils = 3 essentials max; photoQueries ordered "
-      "specific->generic; protein/fibre = integer grams per serving (fallback estimate)."
+      "specific->generic; protein/fibre = integer grams per serving;" + cal_note + " (all fallback estimates)."
     )
 
 def _claude_array(prompt):
@@ -152,28 +158,38 @@ def usda_lookup(q):
         if r.status_code != 200:
             _usda_cache[q] = None; return None
         for food in r.json().get("foods", []):
-            p = f = 0.0
+            p = f = kc = 0.0
             for n in food.get("foodNutrients", []):
                 num = str(n.get("nutrientNumber", "")); nm = (n.get("nutrientName") or "").lower()
+                unit = (n.get("unitName") or "").upper()
                 if num == "203" or nm.startswith("protein"): p = n.get("value", p) or p
                 if num == "291" or nm.startswith("fiber"): f = n.get("value", f) or f
+                if num == "208" or (nm == "energy" and unit == "KCAL"): kc = n.get("value", kc) or kc
             if p > 0:
-                out = {"protein": p, "fibre": f}; _usda_cache[q] = out; return out
+                out = {"protein": p, "fibre": f, "cal": kc}; _usda_cache[q] = out; return out
     except Exception:
         return None
     _usda_cache[q] = None; return None
 
-def compute_macros(ingredients, est_p, est_f):
-    P = F = 0.0; ok = False
+def compute_macros(ingredients, est_p, est_f, est_c):
+    P = F = C = 0.0; ok = False; ok_c = False
     for ing in ingredients:
         try: g = float(ing.get("grams") or 0)
         except Exception: g = 0
         if not g: continue
         n = usda_lookup(ing.get("fdcQuery") or ing.get("display"))
-        if n: P += g/100*n["protein"]; F += g/100*n["fibre"]; ok = True
+        if n:
+            P += g/100*n["protein"]; F += g/100*n["fibre"]; ok = True
+            if n.get("cal"): C += g/100*n["cal"]; ok_c = True
     if ok and (est_p == 0 or P >= est_p*0.7):
-        return round(P), round(F)
-    return est_p, est_f
+        p_out, f_out = round(P), round(F)
+    else:
+        p_out, f_out = est_p, est_f
+    if ok_c and (est_c == 0 or C >= est_c*0.6):
+        c_out = round(C)
+    else:
+        c_out = est_c
+    return p_out, f_out, c_out
 
 def pexels_photo(queries):
     if not PEXELS_KEY: return None
@@ -192,9 +208,10 @@ def pexels_photo(queries):
             continue
     return None
 
-def _finish_recipe(rec):
-    p, f = compute_macros(rec.get("ingredients", []), int(rec.get("protein") or 0), int(rec.get("fibre") or 0))
-    return {
+def _finish_recipe(rec, with_cal=False):
+    p, f, c = compute_macros(rec.get("ingredients", []), int(rec.get("protein") or 0),
+                             int(rec.get("fibre") or 0), int(rec.get("calories") or 0))
+    out = {
         "name": _clean(rec.get("name", "")), "makes": _clean(rec.get("makes", "")),
         "time": _clean(rec.get("time", "")), "utensils": _clean(rec.get("utensils", "")),
         "protein": p, "fibre": f,
@@ -202,15 +219,48 @@ def _finish_recipe(rec):
         "steps": [_clean(s) for s in rec.get("steps", [])],
         "photo": pexels_photo(rec.get("photoQueries")),
     }
+    if with_cal:
+        out["cal"] = c
+    return out
+
+def _pick_combos(sections, target_cal=1600, target_p=140, want=5):
+    """Pick up to `want` breakfast+lunch+dinner day combinations closest to the
+    target (~1600 cal, ~140 g protein), each using distinct recipes for variety."""
+    if len(sections) < 3:
+        return []
+    B, L, D = sections[0]["recipes"], sections[1]["recipes"], sections[2]["recipes"]
+    scored = []
+    for b in B:
+        for l in L:
+            for dn in D:
+                cal = (b.get("cal") or 0) + (l.get("cal") or 0) + (dn.get("cal") or 0)
+                pro = (b.get("protein") or 0) + (l.get("protein") or 0) + (dn.get("protein") or 0)
+                score = abs(cal - target_cal) + 6 * abs(pro - target_p)
+                scored.append((score, cal, pro, b, l, dn))
+    scored.sort(key=lambda x: x[0])
+    picked, ub, ul, ud = [], set(), set(), set()
+    for score, cal, pro, b, l, dn in scored:
+        if b["name"] in ub or l["name"] in ul or dn["name"] in ud:
+            continue
+        picked.append({"cal": cal, "protein": pro, "items": [
+            ("Breakfast", b["name"], b.get("cal") or 0, b.get("protein") or 0),
+            ("Lunch", l["name"], l.get("cal") or 0, l.get("protein") or 0),
+            ("Dinner", dn["name"], dn.get("cal") or 0, dn.get("protein") or 0)]})
+        ub.add(b["name"]); ul.add(l["name"]); ud.add(dn["name"])
+        if len(picked) >= want:
+            break
+    return picked
 
 def generate_guide(d):
+    wc = bool(d.get("with_calories"))
     recipes = generate_recipes(d)
     sections = []
     for key, _word, label, black_lines, magenta_word, toc_name, intro in SECTION_CFG:
         recs = (recipes.get(key) or [])[:5]
         with ThreadPoolExecutor(max_workers=5) as ex:
-            finished = list(ex.map(_finish_recipe, recs))
+            finished = list(ex.map(partial(_finish_recipe, with_cal=wc), recs))
         sections.append({"label": label, "black_lines": black_lines, "magenta_word": magenta_word,
                          "toc_name": toc_name, "intro_lines": intro, "recipes": finished})
     name = (str(d.get("first_name", "")).strip() + " " + str(d.get("last_name", "")).strip()).strip() or "Your"
-    return render_guide(name, sections)
+    combos = _pick_combos(sections) if wc else None
+    return render_guide(name, sections, combos)
