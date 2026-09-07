@@ -96,7 +96,7 @@ def _rules(d):
       "- Do NOT use em dashes or en dashes anywhere; use commas, or the word 'to' for ranges (e.g., 8 to 10 minutes).\n"
       "- Give each recipe a distinct name and dish; do not repeat the same bowl or meal.\n" +
       ("- High protein AND high fibre. Also give an integer 'calories' estimate per serving.\n"
-       if d.get("with_calories") else
+       if True else
        "- High protein AND high fibre. Do NOT mention calories anywhere.\n"))
 
 SECTION_GUIDE = {
@@ -111,8 +111,8 @@ SECTION_GUIDE = {
 
 def _section_prompt(d, section_word, guidance):
     wc = bool(d.get("with_calories"))
-    cal_field = '"calories":0,' if wc else ''
-    cal_note = " calories = integer kcal per serving;" if wc else ""
+    cal_field = '"calories":0,'
+    cal_note = " calories = integer kcal per serving;"
     return (
       "You are a nutrition coach for The Fit Physician. Create EXACTLY 5 " + section_word + " for a personalized guide.\n"
       + guidance + "\n"
@@ -258,7 +258,7 @@ def generate_guide(d):
     for key, _word, label, black_lines, magenta_word, toc_name, intro in SECTION_CFG:
         recs = (recipes.get(key) or [])[:5]
         with ThreadPoolExecutor(max_workers=5) as ex:
-            finished = list(ex.map(partial(_finish_recipe, with_cal=wc), recs))
+            finished = list(ex.map(partial(_finish_recipe, with_cal=True), recs))
         sections.append({"label": label, "black_lines": black_lines, "magenta_word": magenta_word,
                          "toc_name": toc_name, "intro_lines": intro, "recipes": finished})
     name = (str(d.get("first_name", "")).strip() + " " + str(d.get("last_name", "")).strip()).strip() or "Your"
