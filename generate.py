@@ -77,15 +77,16 @@ def _rules(d):
       "directions say to mix it with an electric frother (not water).\n"
       "- If a recipe uses bread, prefer Silver Hills or Carbonaut and note briefly that these higher-protein, "
       "higher-fibre breads beat regular bread. If it uses a wrap, prefer Oro Wheat. For deli meats, use Maple Leaf "
-      "Natural Selections.\n"
+      "Natural Selections and give the amount in slices (e.g., 3 slices).\n"
       "- If a recipe uses a dressing the client selected, suggest a lower-calorie version (e.g., light Caesar, "
       "balsamic vinaigrette).\n"
       "- DIRECTIONS: write SHORT, concise steps that assume basic cooking knowledge. Use as few numbered steps as the "
       "dish truly needs (usually 2 to 4). Do NOT over-explain everyday techniques or pad the steps.\n"
       "- Every ingredient and component MUST be covered by the directions, ESPECIALLY the main protein. Never describe "
       "a side (like rice) while omitting how to cook the protein.\n"
+      "- PORTIONS: size every serving for an adult WOMAN, not a man. Keep protein modest, about 4 oz (110 g) cooked meat or fish, 2 eggs, 3/4 to 1 cup Greek yogurt, or 1 scoop protein powder; do not exceed about 5 oz of protein in a single meal, and keep starch and fat portions moderate to match.\n"
       "- INGREDIENT UNITS: write each 'display' amount in practical household units, NOT grams. Proteins in ounces "
-      "(e.g., 6 oz chicken breast); rice, oats, and milk in cups; vegetables as a count or cups (e.g., 1 medium pepper, "
+      "(e.g., 4 oz chicken breast); rice, oats, and milk in cups; vegetables as a count or cups (e.g., 1 medium pepper, "
       "1 cup broccoli); cheese in tablespoons (tbsp); small extras (oil, spices) in tsp/tbsp. Still include the accurate "
       "'grams' number for every ingredient so macros stay correct.\n"
       "- UTENSILS: list at most the 3 most essential utensils, nothing more.\n"
@@ -101,7 +102,7 @@ def _rules(d):
 
 SECTION_GUIDE = {
     "breakfast": "These must be BREAKFAST dishes (e.g., eggs, scrambles, overnight oats, protein pancakes, "
-                 "smoothies, yogurt bowls).",
+                 "smoothies, yogurt bowls). Aim for roughly 300 to 400 calories per serving (a little wiggle room is fine, but stay close to that range); size ingredients so the calorie total lands there.",
     "lunch": "These must be portable, meal-prep LUNCHES (e.g., grain/protein bowls, wraps, salads, sandwiches).",
     "dinner": "These must be DINNER mains (e.g., sheet-pan meals, stir-fries, grilled/BBQ, pastas, hearty bowls).",
     "snacks": "These must be QUICK SNACKS, NOT full meals: small, portable, 15g+ protein, with little or no cooking "
@@ -120,7 +121,7 @@ def _section_prompt(d, section_word, guidance):
       'Return ONLY a valid JSON array of exactly 5 recipe objects (no prose, no markdown), each:\n'
       '{"name":"","makes":"Serves 1","time":"10 to 12 minutes","utensils":"Non-stick skillet, spatula, bowl",'
       '"protein":0,"fibre":0,' + cal_field + '"photoQueries":["specific dish","simpler","generic real dish"],'
-      '"ingredients":[{"display":"6 oz chicken breast","grams":170,"fdcQuery":"chicken breast, cooked"}],'
+      '"ingredients":[{"display":"4 oz chicken breast","grams":113,"fdcQuery":"chicken breast, cooked"}],'
       '"steps":["..."]}\n'
       "display = practical household unit (oz/cups/tbsp/tsp/count), NOT grams; grams = accurate weight per one serving "
       "for macro math; fdcQuery = plain USDA food name; utensils = 3 essentials max; photoQueries ordered "
