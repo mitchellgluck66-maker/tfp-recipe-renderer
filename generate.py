@@ -253,13 +253,15 @@ def _pick_combos(sections, target_cal=1600, target_p=140, want=5):
     return picked
 
 def generate_guide(d):
+    sc = d.get("show_calories")
     wc = bool(d.get("with_calories"))
+    show_cal = wc or (True if sc is None else bool(sc))
     recipes = generate_recipes(d)
     sections = []
     for key, _word, label, black_lines, magenta_word, toc_name, intro in SECTION_CFG:
         recs = (recipes.get(key) or [])[:5]
         with ThreadPoolExecutor(max_workers=5) as ex:
-            finished = list(ex.map(partial(_finish_recipe, with_cal=True), recs))
+            finished = list(ex.map(partial(_finish_recipe, with_cal=show_cal), recs))
         sections.append({"label": label, "black_lines": black_lines, "magenta_word": magenta_word,
                          "toc_name": toc_name, "intro_lines": intro, "recipes": finished})
     name = (str(d.get("first_name", "")).strip() + " " + str(d.get("last_name", "")).strip()).strip() or "Your"
