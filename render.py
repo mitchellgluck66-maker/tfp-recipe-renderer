@@ -1,9 +1,8 @@
 """The Fit Physician — branded recipe guide PDF renderer (reportlab).
-render_guide(client_name, sections) -> PDF bytes. Same design as the Cowork template:
-full-bleed cover with the client's name, welcome + table of contents with a disclaimer and
-page numbers, magenta section dividers, one recipe per page with a charcoal header band,
-real photo, time + utensils, comprehensive directions, macro pill, magenta header/footer bars,
-and the two branded closing pages.
+render_guide(client_name, sections) -> PDF bytes. Cover with the client's name, a full-page
+welcome/intro, a table of contents on its own page, magenta section dividers, one recipe per
+page with a charcoal header band, real photo, time + utensils, directions, macro pill, a
+"Costco Picks" reference section after the recipes, and one branded closing page.
 """
 import io, os
 from reportlab.lib.pagesizes import letter
@@ -23,8 +22,34 @@ A = os.path.join(HERE, "assets"); F = os.path.join(A, "fonts")
 
 PURPLE = HexColor("#9B2484"); LIGHT = HexColor("#F6F6F6"); BLACK = HexColor("#000000")
 WHITE = HexColor("#FFFFFF"); MIDGRAY = HexColor("#595959"); BORDER = HexColor("#CFCFCF")
-CHAR = HexColor("#231F20")
+CHAR = HexColor("#231F20"); ROWALT = HexColor("#F3F0F4")
 W, H = letter
+
+# Costco Canada finds (static reference shown on every guide).
+COSTCO_SNACKS = [
+    ("Premier Protein / Fairlife shakes", "30 g protein"),
+    ("Quest / Kirkland protein bars", "20-21 g protein, 7-11 g fibre"),
+    ("Frozen edamame", "12 g protein, 5 g fibre"),
+    ("Quest protein chips", "18-20 g protein"),
+    ("Three Farmers protein snack mix", "15 g protein, 12 g fibre"),
+    ("Three Farmers chickpea & fava packs", "6 g protein, 5 g fibre"),
+    ("Oikos high-protein yogurt cups", "15 g protein"),
+    ("Kirkland grass-fed beef sticks", "10 g protein"),
+    ("Kirkland turkey jerky / pepperoni", "10 g protein"),
+    ("Cottage cheese snack cups", "12-15 g protein"),
+    ("Hard-boiled eggs", "12 g protein / 2 eggs"),
+    ("Popcorn", "4-5 g fibre"),
+    ("Whisps parmesan cheese crisps", "14 g protein / 30 g"),
+    ("Pears / apples", "4-6 g fibre / fruit"),
+    ("Hummus cups + veggies", "varies by serving"),
+]
+COSTCO_BREADS = [
+    ("Oroweat Keto Original Tortillas", "1 wrap", "~90", "3 g", "17 g"),
+    ("Silver Hills Little Big Bread", "2 slices", "~100", "6 g", "5 g"),
+    ("Silver Hills Squirrelly Bread", "2 slices", "~170", "11 g", "8 g"),
+    ("Carbonaut Gluten-Free Plain Bagel", "1 bagel", "90", "2 g", "33 g"),
+    ("Carbonaut Original Keto Bread", "1 slice", "~80", "7 g", "7 g"),
+]
 
 _registered = False
 def _fonts():
@@ -91,32 +116,44 @@ def render_guide(client_name, sections, combos=None):
         c.drawCentredString(W/2+dx, ty+dy, nm)
     c.setFillColor(WHITE); c.drawCentredString(W/2, ty, nm); c.showPage()
 
-    # welcome + TOC
-    page_bars(); draw_logo(LOGO_LIGHT, W/2, H-95, 150, 5736, 1875)
-    fr = Frame(72, 430, W-144, H-150-430, showBoundary=0, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    fr.addFromList([
-        Paragraph("<b>Welcome to The Fit Physician Recipe Guide.</b>", st_body),
-        Paragraph("This guide features some of our favourite go-to meals and snacks, built around the foods you "
-                  "told us you love, to help you reach your goals. Everything here is high in protein and fibre.", st_body),
-        Paragraph("The key to a nutrition plan you will actually stick to is a recipe arsenal: a few staples for each "
-                  "part of your day that you enjoy week in and week out. Mix in your favourite indulgences to build a "
-                  "flexible diet that fits your life. This guide supports your coaching, it does not replace it.", st_body),
-        Paragraph("<font name='Lato-BoldItalic' size=15>Enjoy! Suzanne &amp; Jake</font>", st_body),
-    ], c)
-    c.setFillColor(PURPLE); c.setFont('Lato-Bold', 10.5)
-    c.drawCentredString(W/2, 416, "Each recipe makes 1 serving. For more servings, simply multiply all ingredient amounts.")
-    c.setFillColor(MIDGRAY); c.setFont('Lato-Italic', 9.5)
-    c.drawCentredString(W/2, 398, "Please note: all protein and fibre values in this guide are estimates.")
-    c.setFillColor(BLACK); c.setFont('Headline', 28); c.drawCentredString(W/2, 360, "TABLE OF CONTENTS")
-    y = 320; pg = 3
-    for s in sections:
-        c.setStrokeColor(PURPLE); c.setLineWidth(2); c.rect(72, y-8, 30, 32, fill=0, stroke=1)
-        c.setFillColor(PURPLE); c.setFont('Headline', 20); c.drawCentredString(72+15, y+2, str(sections.index(s)+1))
-        nf = Frame(115, y-8, W-115-110, 34, showBoundary=0, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=6)
-        nf.addFromList([Paragraph(s['toc_name'], st_toc)], c)
+    # ===== intro (full page) =====
+    page_bars(); draw_logo(LOGO_LIGHT, W/2, H-80, 132, 5736, 1875)
+    st_ih = _PS('ih', fontName='Lato-Bold', fontSize=16, textColor=PURPLE, alignment=TA_CENTER, leading=20, spaceAfter=11)
+    st_ib = _PS('ib', fontSize=10.8, textColor=BLACK, alignment=TA_LEFT, leading=15, spaceAfter=7)
+    st_inote = _PS('inote', fontName='Lato-Bold', fontSize=10.8, textColor=PURPLE, alignment=TA_CENTER, leading=14, spaceBefore=3, spaceAfter=8)
+    intro_flow = [
+        Paragraph("Welcome to your personal Fit Physician Recipe Guide", st_ih),
+        Paragraph("This guide was created to give you more tools, ideas, and inspiration to make eating well easier in your everyday life.", st_ib),
+        Paragraph("One important thing before you dive in: this is <b>NOT</b> a meal plan. We don't believe in rigid plans that tell you exactly what to eat and when to eat it, especially when they're filled with foods you don't actually enjoy.", st_ib),
+        Paragraph("Instead, our goal is to help you build your own recipe arsenal: a collection of go-to meals and snacks you genuinely enjoy, that fit your lifestyle, and help you work toward your goals. That's why the recipes in this guide were built around the foods YOU told us you love.", st_ib),
+        Paragraph("You'll find simple, practical options that prioritize protein and fibre and can be mixed, matched, and adjusted based on your individual needs and preferences.", st_ib),
+        Paragraph("Most importantly, this guide is designed to support the individualized nutrition coaching you'll receive throughout The Fit Physician program, not replace it.", st_ib),
+        Paragraph("Each recipe makes 1 serving. For more servings, simply multiply all ingredient amounts.", st_inote),
+        Paragraph("Please note that all calories, protein, fibre, and other macro calculations included in this guide are estimates. Exact nutrition information will vary depending on the brands, ingredients, quantities, and substitutions you use, so refer to your specific food labels when more precise tracking is important.", st_ib),
+        Paragraph("We hope this becomes a resource you come back to again and again as you build a way of eating that is healthy, enjoyable, flexible, and sustainable.", st_ib),
+        Paragraph("Enjoy!", st_ib),
+        Paragraph("<b>The Fit Physician Team</b>", st_ib),
+    ]
+    ifr = Frame(80, 58, W-160, H-150-58, showBoundary=0, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    ifr.addFromList([KeepInFrame(W-160, H-150-58, intro_flow, mode='shrink')], c)
+    page_number(); c.showPage()
+
+    # ===== table of contents (own page) =====
+    page_bars(); draw_logo(LOGO_LIGHT, W/2, H-80, 132, 5736, 1875)
+    c.setFillColor(BLACK); c.setFont('Headline', 30); c.drawCentredString(W/2, H-150, "TABLE OF CONTENTS")
+    toc_entries = [s['toc_name'] for s in sections] + ["Costco Picks"]
+    y = H-210; pg = 4  # cover=1, intro=2, TOC=3, sections start at 4
+    for i, name in enumerate(toc_entries):
+        is_costco = (name == "Costco Picks")
+        c.setStrokeColor(PURPLE); c.setLineWidth(2); c.rect(80, y-8, 30, 32, fill=0, stroke=1)
+        c.setFillColor(PURPLE); c.setFont('Headline', 20); c.drawCentredString(80+15, y+2, str(i+1))
+        nf = Frame(123, y-8, W-123-110, 34, showBoundary=0, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=6)
+        nf.addFromList([Paragraph(name, st_toc)], c)
         c.setStrokeColor(MIDGRAY); c.setLineWidth(0.5); c.setDash(1, 3); c.line(W-150, y+4, W-96, y+4); c.setDash()
-        c.setFillColor(PURPLE); c.setFont('Lato-Bold', 14); c.drawRightString(W-72, y+2, "p. %d" % pg)
-        pg += 1 + len(s['recipes']); y -= 48
+        c.setFillColor(PURPLE); c.setFont('Lato-Bold', 14); c.drawRightString(W-80, y+2, "p. %d" % pg)
+        if not is_costco:
+            pg += 1 + len(sections[i]['recipes'])
+        y -= 52
     page_number(); c.showPage()
 
     def divider(s):
@@ -136,7 +173,6 @@ def render_guide(client_name, sections, combos=None):
         c.setFillColor(WHITE); c.setFont('Headline', 25); c.drawCentredString(W/2, H-74, "RECIPE GUIDE")
         c.setFillColor(PURPLE); c.rect(0, H-bh-22, W, 22, fill=1, stroke=0)
         c.setFillColor(WHITE); c.setFont('Lato-Bold', 10.5); c.drawCentredString(W/2, H-bh-22+7, label.upper())
-        # auto-fit recipe title to the page width (shrink; wrap to 2 lines only if truly long)
         up = r['name'].upper(); max_w = W - 96
         c.setFillColor(BLACK)
         size = 24
@@ -153,7 +189,6 @@ def render_guide(client_name, sections, combos=None):
             c.drawCentredString(W/2, H-144, l1); c.drawCentredString(W/2, H-144-size, l2)
         if r.get('makes'):
             c.setFillColor(MIDGRAY); c.setFont('Lato-Italic', 10.5); c.drawCentredString(W/2, H-168, r['makes'])
-        # photo (real image if provided, else placeholder)
         ph_top = H-176; ph_h = 104; bx, bw = 72, W-144
         img = _crop_cover(r['photo'], bw, ph_h) if r.get('photo') else None
         if img:
@@ -172,7 +207,6 @@ def render_guide(client_name, sections, combos=None):
                 Spacer(1, 12), Paragraph("DIRECTIONS", st_h), Spacer(1, 2)]
         for i, s2 in enumerate(r['steps']):
             flow.append(Paragraph("%d.&nbsp;&nbsp;&nbsp;%s" % (i+1, s2), st_step))
-        # shrink to fit so long ingredient lists + directions never run off the page
         fr2.addFromList([KeepInFrame(W-144, fr2_h, flow, mode='shrink')], c)
         if r.get('cal'):
             pw = 360; pill_text = "P: %sg   |   Fibre: %sg   |   %s cal" % (r['protein'], r['fibre'], r['cal'])
@@ -190,7 +224,62 @@ def render_guide(client_name, sections, combos=None):
         for r in s['recipes']:
             recipe_page(s['label'], r)
 
-    # bonus page: sample daily meal combinations (breakfast + lunch + dinner)
+    # ===== Costco Picks (static reference, every guide) =====
+    page_bars()
+    c.setFillColor(BLACK); c.setFont('Headline', 30); c.drawCentredString(W/2, H-90, "COSTCO PICKS")
+    c.setFillColor(PURPLE); c.rect(W/2-45, H-104, 90, 4, fill=1, stroke=0)
+    c.setFillColor(MIDGRAY); c.setFont('Lato-Italic', 10)
+    c.drawCentredString(W/2, H-122, "High-protein, high-fibre finds at Costco Canada to make hitting your targets easier.")
+
+    def _rowline(x0, x1, yb):
+        c.setStrokeColor(BORDER); c.setLineWidth(0.4); c.line(x0, yb, x1, yb)
+
+    LMX, RMX = 60, W-60
+    # --- snacks table ---
+    y = H-146
+    c.setFillColor(PURPLE); c.setFont('Lato-Bold', 12.5); c.drawString(LMX, y, "15 High-Protein Snack Finds"); y -= 16
+    hh = 17
+    c.setFillColor(CHAR); c.rect(LMX, y-hh+3, RMX-LMX, hh, fill=1, stroke=0)
+    c.setFillColor(WHITE); c.setFont('Lato-Bold', 9)
+    c.drawString(LMX+6, y-hh+8, "SNACK / FIND"); c.drawString(LMX+320, y-hh+8, "PROTEIN / FIBRE PER SERVING")
+    y -= hh
+    rh = 16.4
+    for idx, (nm2, macro) in enumerate(COSTCO_SNACKS):
+        if idx % 2 == 0:
+            c.setFillColor(ROWALT); c.rect(LMX, y-rh+3, RMX-LMX, rh, fill=1, stroke=0)
+        c.setFillColor(BLACK); c.setFont('Lato', 9)
+        c.drawString(LMX+6, y-rh+7, nm2)
+        c.setFillColor(MIDGRAY); c.drawString(LMX+320, y-rh+7, macro)
+        y -= rh
+    _rowline(LMX, RMX, y+3)
+
+    # --- breads & wraps table ---
+    y -= 20
+    c.setFillColor(PURPLE); c.setFont('Lato-Bold', 12.5); c.drawString(LMX, y, "5 Better Bread & Wrap Finds"); y -= 16
+    cols = [LMX+6, LMX+232, LMX+312, LMX+388, LMX+452]  # product, serving, cal, protein, fibre
+    c.setFillColor(CHAR); c.rect(LMX, y-hh+3, RMX-LMX, hh, fill=1, stroke=0)
+    c.setFillColor(WHITE); c.setFont('Lato-Bold', 9)
+    for cx2, htxt in zip(cols, ["PRODUCT", "SERVING", "CAL", "PROTEIN", "FIBRE"]):
+        c.drawString(cx2, y-hh+8, htxt)
+    y -= hh
+    for idx, row in enumerate(COSTCO_BREADS):
+        if idx % 2 == 0:
+            c.setFillColor(ROWALT); c.rect(LMX, y-rh+3, RMX-LMX, rh, fill=1, stroke=0)
+        c.setFillColor(BLACK); c.setFont('Lato', 9)
+        for cx2, val in zip(cols, row):
+            c.drawString(cx2, y-rh+7, val)
+        y -= rh
+    _rowline(LMX, RMX, y+3)
+
+    y -= 18
+    st_fn = _PS('fn', fontSize=8, textColor=MIDGRAY, alignment=TA_LEFT, leading=11)
+    fnf = Frame(LMX, y-34, RMX-LMX, 40, showBoundary=0, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    fnf.addFromList([Paragraph("Nutrition values can vary by flavour, formulation, package size and warehouse, and Costco "
+                               "inventory changes over time. Always check the Nutrition Facts panel on the specific product "
+                               "you buy. These picks are suggestions, not endorsements.", st_fn)], c)
+    page_number(); c.showPage()
+
+    # bonus page: sample daily meal combinations (special calorie product only)
     if combos:
         page_bars()
         c.setFillColor(BLACK); c.setFont('Headline', 30); c.drawCentredString(W/2, H-96, "MEAL COMBINATIONS")
@@ -202,8 +291,8 @@ def render_guide(client_name, sections, combos=None):
         flow = []
         for idx, cb in enumerate(combos, 1):
             flow.append(Paragraph("Day %d &nbsp;&bull;&nbsp; about %s cal, %s g protein" % (idx, cb['cal'], cb['protein']), st_ch))
-            for label, nm, cal, pro in cb['items']:
-                flow.append(Paragraph("<b>%s:</b> %s <font color='#595959'>(%s cal, %s g protein)</font>" % (label, nm, cal, pro), st_cc))
+            for label, nm2, cal, pro in cb['items']:
+                flow.append(Paragraph("<b>%s:</b> %s <font color='#595959'>(%s cal, %s g protein)</font>" % (label, nm2, cal, pro), st_cc))
         flow.append(Spacer(1, 10))
         flow.append(Paragraph("<i>All values are estimates. Add any snack from Section 4 to add roughly 200 to 300 calories and "
                               "20 to 28 g protein, or scale portions up or down to hit your own targets.</i>",
@@ -212,6 +301,7 @@ def render_guide(client_name, sections, combos=None):
         bf.addFromList([KeepInFrame(W-120, H-150-90, flow, mode='shrink')], c)
         page_number(); c.showPage()
 
+    # closing page (branded thank-you). The promo "learn more" page is intentionally not included.
     c.drawImage(CLOSE1, 0, 0, W, H)
     f3 = Frame(W*0.205, H*0.44, W*0.62, H*0.30, showBoundary=0)
     f3.addFromList([
@@ -222,6 +312,5 @@ def render_guide(client_name, sections, combos=None):
         Paragraph("Any questions? Email hello@thefitphysician.com.", st_body),
     ], c)
     c.showPage()
-    c.drawImage(CLOSE2, 0, 0, W, H); c.showPage()
     c.save(); buf.seek(0)
     return buf.getvalue()
