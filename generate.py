@@ -75,9 +75,16 @@ def _rules(d):
       "- NEVER use regular bacon; always use turkey bacon instead.\n"
       "- For any protein shake, use 1 cup Fairlife lactose-free skim milk plus 1 scoop protein powder, and in the "
       "directions say to mix it with an electric frother (not water).\n"
-      "- If a recipe uses bread, prefer Silver Hills or Carbonaut and note briefly that these higher-protein, "
-      "higher-fibre breads beat regular bread. If it uses a wrap, prefer Oro Wheat. For deli meats, use Maple Leaf "
-      "Natural Selections and give the amount in slices (e.g., 3 slices).\n"
+      "- PREFERRED PRODUCTS (use these to boost protein and fibre, as long as they fit the client's restrictions and "
+      "allergies). Breads and wraps: Silver Hills Squirrelly (2 slices = 11 g protein, 8 g fibre), Silver Hills Little "
+      "Big (2 slices = 6 g protein, 5 g fibre), Carbonaut Original keto bread (1 slice = 7 g protein, 7 g fibre), "
+      "Carbonaut gluten-free plain bagel (1 bagel = 2 g protein, 33 g fibre), Oroweat Keto tortilla (1 wrap = 3 g "
+      "protein, 17 g fibre). Protein snacks: Premier Protein or Fairlife shake (30 g protein), Quest or Kirkland "
+      "protein bar (about 20 g protein, 7 to 11 g fibre), Quest protein chips (about 19 g protein), Three Farmers "
+      "protein snack mix (15 g protein, 12 g fibre), Oikos high-protein yogurt (15 g protein), Whisps parmesan crisps "
+      "(14 g protein per 30 g), edamame (about 12 g protein, 5 g fibre). When a recipe uses bread, a wrap, or one of "
+      "these snacks, use EXACTLY these protein and fibre values for that item. For deli meats, use Maple Leaf Natural "
+      "Selections and give the amount in slices (e.g., 3 slices).\n"
       "- If a recipe uses a dressing the client selected, suggest a lower-calorie version (e.g., light Caesar, "
       "balsamic vinaigrette).\n"
       "- DIRECTIONS: write SHORT, concise steps that assume basic cooking knowledge. Use as few numbered steps as the "
@@ -172,9 +179,35 @@ def usda_lookup(q):
         return None
     _usda_cache[q] = None; return None
 
+def _lead_qty(s):
+    n = ""
+    for ch in s:
+        if ch.isdigit() or ch == ".": n += ch
+        elif n: break
+    try: return float(n)
+    except Exception: return 0.0
+
+def _pref_lookup(display):
+    """Exact label macros for preferred Costco/brand breads and wraps (used to boost recipe totals)."""
+    s = (display or "").lower()
+    def scaled(base, p, f, cal):
+        q = _lead_qty(s) or base; sc = q/base if base else 1
+        return {"protein": round(p*sc), "fibre": round(f*sc), "cal": round(cal*sc)}
+    if "squirrelly" in s: return scaled(2, 11, 8, 170)
+    if "little big" in s: return scaled(2, 6, 5, 100)
+    if "carbonaut" in s and "bagel" in s: return scaled(1, 2, 33, 90)
+    if "carbonaut" in s: return scaled(1, 7, 7, 80)
+    if ("oroweat" in s or "oro wheat" in s) and ("keto" in s or "tortilla" in s or "wrap" in s): return scaled(1, 3, 17, 90)
+    return None
+
 def compute_macros(ingredients, est_p, est_f, est_c):
     P = F = C = 0.0; ok = False; ok_c = False
     for ing in ingredients:
+        pm = _pref_lookup(ing.get("display"))
+        if pm:
+            P += pm["protein"]; F += pm["fibre"]; ok = True
+            if pm.get("cal"): C += pm["cal"]; ok_c = True
+            continue
         try: g = float(ing.get("grams") or 0)
         except Exception: g = 0
         if not g: continue
